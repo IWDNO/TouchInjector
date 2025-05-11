@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="TouchInjector:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/TouchInjector_jar</output-path>
+    <root id="archive" name="TouchInjector.jar">
+      <element id="module-output" name="TouchInjector" />
+    </root>
+  </artifact>
+</component>
