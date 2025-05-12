@@ -1,25 +1,27 @@
+import android.net.LocalServerSocket;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.os.SystemClock;
 import android.view.InputEvent;
 import android.view.MotionEvent;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 
 public class Main {
     private static Object inputManager;
     private static Method injectInputEventMethod;
 
+    private static final int EMU_SCREEN_WIDTH = 1440;
+    private static final int EMU_SCREEN_HEIGHT = 3120;
+    private static final String SOCKET_NAME = "touch_socket";
+
     public static void main(String[] args) {
         try {
             initializeInputManager();
-
-            float startX = 400;
-            float startY = 1000;
-            float endX = 500;
-            float endY = 200;
-            int steps = 800;
-
-            long downTime = SystemClock.uptimeMillis();
-            performSwipe(startX, startY, endX, endY, steps);
-            System.out.println(SystemClock.uptimeMillis() - downTime);
+            startClientSocket();
         } catch (Exception e) {
             System.out.println("Exception occurred:");
             e.printStackTrace(System.out);
@@ -40,16 +42,51 @@ public class Main {
         injectInputEventMethod = inputManagerClass.getMethod("injectInputEvent", InputEvent.class, int.class);
     }
 
-    private static void performSwipe(float startX, float startY, float endX, float endY, int steps) throws Exception {
-        injectDownEvent(startX, startY);
+    private static void startClientSocket() {
+        try {
+            System.out.println("1");
+            LocalSocket socket = new LocalSocket();
+            socket.connect(new LocalSocketAddress(SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));  // :contentReference[oaicite:2]{index=2}
 
-        for (int i = 1; i <= steps; i++) {
-            float currentX = startX + (endX - startX) * i / steps;
-            float currentY = startY + (endY - startY) * i / steps;
-            injectMoveEvent(currentX, currentY);
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            System.out.println("we're in");
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("Received: " + line);
+                try {
+                    JSONObject json = new JSONObject(line);
+                    float sourceX = (float) json.getDouble("x");
+                    float sourceY = (float) json.getDouble("y");
+                    int action = json.getInt("action");
+                    int srcWidth = json.getInt("source_width");
+                    int srcHeight = json.getInt("source_height");
+
+                    float x = sourceX * EMU_SCREEN_WIDTH / srcWidth;
+                    float y = sourceY * EMU_SCREEN_HEIGHT / srcHeight;
+
+                    switch (action) {
+                        case 0:
+                            injectDownEvent(x, y);
+                            break;
+                        case 1:
+                            injectMoveEvent(x, y);
+                            break;
+                        case 2:
+                            injectUpEvent(x, y);
+                            break;
+                        default:
+                            System.out.println("Unknown action: " + action);
+                    }
+                } catch (Exception e) {
+                    System.out.println("Failed to parse or inject event:");
+                    e.printStackTrace();
+                }
+            }
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        injectUpEvent(endX, endY);
     }
 
     private static boolean injectDownEvent(float x, float y) throws Exception {
@@ -78,7 +115,6 @@ public class Main {
     private static boolean _injectEvent(MotionEvent event) throws Exception {
         return (boolean) injectInputEventMethod.invoke(inputManager, event, 0);
     }
-
 
     private static void _setDisplayId(InputEvent event, int displayId) {
         try {
